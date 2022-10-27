@@ -50,7 +50,7 @@ async function addExercise(_id, description, duration, date){
     $push:{
       log: {
         description: description,
-        duration: duration,
+        duration: duration, 
         date: date
       }
     }
@@ -65,58 +65,45 @@ async function addExercise(_id, description, duration, date){
   };
 };
 
-async function getUser(_id, from, to, limit){
-  let query;
-  let user;
-  if (from === undefined && to === undefined){
-    query = {_id: new ObjectId(_id)};
-    if (limit === undefined){
-      user = await collection.find(query);
+async function getLogs(_id){
+  const user = await collection.findOne(
+    {
+      _id: new ObjectId(_id)
     }
-    else{
-      user = await collection.find(query).limit(Number(limit));
-    }
+  );
+  return user.log;
+};
+
+async function getUserLog(_id, from, to, limit){
+  const document = await collection.findOne({_id: new ObjectId(_id)});
+  let log;
+  if (from && to){
+    let fromDate = new Date(from);
+    let toDate = new Date(to);
+    log = document.log.filter((item) => {
+      let itemDate = new Date(item.date);
+      if (itemDate >= fromDate && itemDate < toDate){
+        return item;
+      }
+    });
   }
   else{
-    if (from != undefined && to != undefined){
-      query = {
-        _id: new ObjectId(_id),
-        log: {
-          date: {
-            $gte: new Date(from),
-            $lt: new Date(to)
-          }
-        }
-      };
-    }
-    else if (from === undefined && to != undefined){
-      query = {
-        _id: new ObjectId(_id),
-        log: {
-          date: {
-            $lt: new Date(to)
-          }
-        }
-      };
-    }
-    else{
-      query = {
-        _id: new ObjectId(_id),
-        log: {
-          date: {
-            $gte: new Date(from)
-          }
-        }
-      };
-    }
-    if (limit === undefined){
-      user = await collection.find(query);
-    }
-    else{
-      user = await collection.find(query).limit(Number(limit));
-    }
+    log = document.log;
   }
-  return user;
+  if (limit){
+    log = log.slice(0, limit);
+  }
+  log = log.map((item) => {
+    return {
+      description: item.description,
+      duration: item.duration,
+      date: new Date(item.date).toDateString()
+    }
+  });
+  return {
+    log: log,
+    count: log.length
+  };
 };
 
 app.use(cors());
@@ -144,7 +131,8 @@ app.post('/api/users/:_id/exercises', async (req, res) => {
   const description = req.body.description;
   const duration = Number(req.body.duration);
   let date;
-  if (req.body.date === ""){
+  console.log(`_id: ${_id}, date: ${req.body.date}`);
+  if (!req.body.date){
     date = new Date();
   }
   else{
@@ -154,20 +142,14 @@ app.post('/api/users/:_id/exercises', async (req, res) => {
   res.json(updatedUser);
 });
 
-app.get('/api/users/:_id/logs/:from?/:to?/:limit?', async (req, res) => {
-    console.log(`from: ${req.params.from}, to: ${req.params.to}, limit: ${req.params.limit}`);
-  const from = req.params.from;
-  const to = req.params.to;
-  const limit = req.params.limit;
+app.get('/api/users/:_id/logs', async (req, res) => {
   const _id = req.params._id;
-  const user = await getUser(_id, from, to, limit);
-  const count = user.log.length;
-  res.json({
-    _id: _id,
-    username: user.username,
-    count: count,
-    log: user.log
-  });
+  const from = req.query.from;
+  const to = req.query.to;
+  const limit = req.query.limit;
+  // console.log(`from: ${from}, to: ${to}, limit: ${limit}`);
+  const userLog = await getUserLog(_id, from, to, limit);
+  res.json(userLog);
 });
 
 const listener = app.listen(process.env.PORT || 3000, () => {
